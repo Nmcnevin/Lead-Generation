@@ -1,13 +1,20 @@
 """
-Lead Generation System - Phase 2: Production Ready
+Lead Generation System - Real Data with Selenium
+Optimized for Render.com deployment
 """
 
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
-import random
 import re
+import os
 
 # Page Configuration
 st.set_page_config(
@@ -20,141 +27,200 @@ if 'extracted_data' not in st.session_state:
     st.session_state.extracted_data = None
 
 # ============================================
-# BUSINESS DATA GENERATOR
+# SELENIUM SCRAPING FUNCTION - REAL DATA
 # ============================================
-def generate_realistic_leads(keyword, location, num_results):
+@st.cache_data(ttl=3600, show_spinner=False)
+def scrape_google_maps_real(keyword, location, max_results=10):
     """
-    Generate realistic business leads based on keyword and location
+    Scrape REAL data from Google Maps using Selenium
     """
-    
-    # Business templates by category
-    business_data = {
-        'training': {
-            'names': ['Academy', 'Institute', 'Learning Center', 'Training Hub', 'Education Center', 
-                     'Skills Academy', 'Professional Institute', 'Career Center', 'Study Center', 'Coaching Classes'],
-            'prefixes': ['Elite', 'Prime', 'Smart', 'Modern', 'Professional', 'Excellence', 'Premier', 'Advanced', 'Quality', 'Top'],
-            'domains': ['academy', 'institute', 'learning', 'education', 'training']
-        },
-        'software': {
-            'names': ['Technologies', 'Solutions', 'Systems', 'Infotech', 'Software Services', 
-                     'IT Solutions', 'Tech Labs', 'Digital Services', 'InfoSystems', 'Innovations'],
-            'prefixes': ['Tech', 'Digital', 'Cyber', 'Cloud', 'Smart', 'Next', 'Future', 'Code', 'Data', 'Info'],
-            'domains': ['tech', 'solutions', 'software', 'systems', 'infotech']
-        },
-        'restaurant': {
-            'names': ['Restaurant', 'Cafe', 'Kitchen', 'Bistro', 'Diner', 
-                     'Eatery', 'Food Court', 'Grill', 'Multi Cuisine', 'Family Restaurant'],
-            'prefixes': ['Spice', 'Royal', 'Grand', 'Urban', 'Fresh', 'Tasty', 'Flavor', 'Savory', 'Delicious', 'Golden'],
-            'domains': ['restaurant', 'cafe', 'kitchen', 'bistro', 'diner']
-        },
-        'hotel': {
-            'names': ['Hotel', 'Resort', 'Inn', 'Lodge', 'Residency', 
-                     'Suites', 'Grand Hotel', 'Palace', 'Comfort Inn', 'Stay'],
-            'prefixes': ['Royal', 'Grand', 'Luxury', 'Premium', 'Elite', 'Crown', 'Paradise', 'Comfort', 'Heritage', 'Imperial'],
-            'domains': ['hotel', 'resort', 'inn', 'stay', 'hospitality']
-        },
-        'hospital': {
-            'names': ['Hospital', 'Clinic', 'Medical Center', 'Healthcare', 'Nursing Home',
-                     'Polyclinic', 'Specialty Hospital', 'Care Center', 'Health Services', 'Medical Hub'],
-            'prefixes': ['City', 'Care', 'Life', 'Health', 'Wellness', 'Medicare', 'Medico', 'Prime', 'Global', 'Advanced'],
-            'domains': ['hospital', 'clinic', 'healthcare', 'medical', 'health']
-        },
-        'retail': {
-            'names': ['Store', 'Shop', 'Mart', 'Outlet', 'Bazaar', 
-                     'Shopping Center', 'Emporium', 'Supermarket', 'Mall', 'Plaza'],
-            'prefixes': ['Big', 'Mega', 'Super', 'Smart', 'Quick', 'Daily', 'Fresh', 'City', 'Metro', 'Grand'],
-            'domains': ['store', 'shop', 'mart', 'retail', 'shopping']
-        }
-    }
-    
-    # Detect business type from keyword
-    biz_type = 'software'  # default
-    keyword_lower = keyword.lower()
-    
-    for key in business_data.keys():
-        if key in keyword_lower:
-            biz_type = key
-            break
-    
-    data = business_data[biz_type]
-    
-    # Indian localities
-    areas = ['MG Road', 'Main Road', 'Station Road', 'Park Street', 'Gandhi Nagar', 
-             'Market Area', 'Civil Lines', 'City Center', 'Sector 1', 'Phase 2',
-             'Model Town', 'Green Park', 'Nehru Place', 'Ring Road', 'Bypass Road']
-    
-    # Social media platforms
-    social_platforms = ['facebook.com', 'instagram.com', 'linkedin.com/company', 'twitter.com']
-    
     businesses = []
+    driver = None
     
-    for i in range(num_results):
-        # Generate business name
-        prefix = random.choice(data['prefixes'])
-        suffix = random.choice(data['names'])
-        business_name = f"{prefix} {suffix}"
+    try:
+        # Setup Chrome options for Render.com
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         
-        # Add number sometimes
-        if random.random() > 0.6:
-            business_name = f"{business_name} {random.randint(1, 99)}"
+        # For Render.com - use system Chrome
+        chrome_options.binary_location = os.environ.get("CHROME_BIN", "/usr/bin/chromium-browser")
         
-        # Generate phone number (Indian format)
-        phone_codes = ['98', '97', '96', '95', '94', '93', '92', '91', '90', '89', '88', '87', '86', '85']
-        phone = f"+91 {random.choice(phone_codes)}{random.randint(100, 999)} {random.randint(10000, 99999)}"
+        # Initialize driver
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.set_page_load_timeout(30)
         
-        # Generate email
-        domain_name = business_name.lower().replace(' ', '').replace('-', '')[:12]
-        email_domains = ['com', 'in', 'co.in', 'org']
-        email_prefixes = ['info', 'contact', 'hello', 'enquiry', 'support']
-        email = f"{random.choice(email_prefixes)}@{domain_name}.{random.choice(email_domains)}"
+        # Build search URL
+        search_query = f"{keyword} in {location}".replace(" ", "+")
+        url = f"https://www.google.com/maps/search/{search_query}"
         
-        # Generate address
-        building = random.choice(['Building', 'Tower', 'Complex', 'Plaza', 'Block', 'House'])
-        area = random.choice(areas)
-        pincode = random.randint(600000, 799999)
-        address = f"{random.randint(1, 500)}/{random.randint(1, 99)}, {building} {random.randint(1, 20)}, {area}, {location} - {pincode}"
+        st.info(f"🌐 Connecting to Google Maps...")
+        driver.get(url)
+        time.sleep(5)
         
-        # Generate website
-        website = f"https://www.{domain_name}.{random.choice(['com', 'in', 'co.in'])}"
+        # Wait for results panel
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[@role='feed']"))
+            )
+        except:
+            st.warning("⚠️ Could not load results panel")
+            return pd.DataFrame()
         
-        # Generate social media
-        social_name = domain_name.replace(' ', '')
-        social_links = []
-        num_social = random.randint(1, 3)
-        selected_platforms = random.sample(social_platforms, num_social)
+        # Find scrollable panel
+        panel = driver.find_element(By.XPATH, "//div[@role='feed']")
         
-        for platform in selected_platforms:
-            if 'facebook' in platform:
-                social_links.append(f"Facebook: https://{platform}/{social_name}")
-            elif 'instagram' in platform:
-                social_links.append(f"Instagram: https://{platform}/{social_name}")
-            elif 'linkedin' in platform:
-                social_links.append(f"LinkedIn: https://{platform}/{social_name}")
-            elif 'twitter' in platform:
-                social_links.append(f"Twitter: https://{platform}/{social_name}")
+        st.info(f"📜 Scrolling to load {max_results} results...")
         
-        social_media = " | ".join(social_links) if social_links else "N/A"
+        # Scroll to load results
+        last_height = driver.execute_script("return arguments[0].scrollHeight", panel)
+        scroll_attempts = 0
+        max_scroll_attempts = 10
         
-        # Create business entry
-        business = {
-            'Business Name': business_name,
-            'Email ID': email,
-            'Phone Number': phone,
-            'Location / Address': address,
-            'Business Category': keyword,
-            'Website URL': website,
-            'Social Media Profiles': social_media
-        }
+        while scroll_attempts < max_scroll_attempts:
+            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", panel)
+            time.sleep(2)
+            new_height = driver.execute_script("return arguments[0].scrollHeight", panel)
+            
+            if new_height == last_height:
+                break
+            
+            last_height = new_height
+            scroll_attempts += 1
         
-        businesses.append(business)
+        # Get all business links
+        business_elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/maps/place/')]")
+        
+        if not business_elements:
+            st.error("❌ No businesses found")
+            return pd.DataFrame()
+        
+        # Limit to requested number
+        business_elements = business_elements[:max_results]
+        
+        st.info(f"✅ Found {len(business_elements)} businesses. Extracting details...")
+        
+        # Progress tracking
+        progress_placeholder = st.empty()
+        
+        # Extract each business
+        for idx, element in enumerate(business_elements):
+            try:
+                progress_placeholder.text(f"⏳ Extracting {idx + 1}/{len(business_elements)}: Please wait...")
+                
+                # Click on business
+                driver.execute_script("arguments[0].click();", element)
+                time.sleep(4)
+                
+                # Extract business name
+                name = "N/A"
+                try:
+                    name_element = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "h1.DUwDvf"))
+                    )
+                    name = name_element.text
+                except:
+                    try:
+                        name = driver.find_element(By.XPATH, "//h1").text
+                    except:
+                        pass
+                
+                if name == "N/A" or not name:
+                    continue
+                
+                # Extract phone number
+                phone = "N/A"
+                try:
+                    phone_elements = driver.find_elements(By.XPATH, "//button[contains(@data-item-id, 'phone')]")
+                    if phone_elements:
+                        aria_label = phone_elements[0].get_attribute('aria-label')
+                        if aria_label:
+                            phone_match = re.search(r'[\+\d][\d\s\-\(\)]{8,}', aria_label)
+                            if phone_match:
+                                phone = phone_match.group().strip()
+                except:
+                    pass
+                
+                # Extract address
+                address = "N/A"
+                try:
+                    address_elements = driver.find_elements(By.XPATH, "//button[contains(@data-item-id, 'address')]")
+                    if address_elements:
+                        aria_label = address_elements[0].get_attribute('aria-label')
+                        if aria_label and ':' in aria_label:
+                            address = aria_label.split(':', 1)[1].strip()
+                except:
+                    pass
+                
+                # Extract website
+                website = "N/A"
+                try:
+                    website_elements = driver.find_elements(By.XPATH, "//a[contains(@data-item-id, 'authority')]")
+                    if website_elements:
+                        website = website_elements[0].get_attribute('href')
+                except:
+                    pass
+                
+                # Extract category
+                category = keyword
+                try:
+                    category_element = driver.find_element(By.XPATH, "//button[contains(@class, 'DkEaL')]")
+                    category = category_element.text
+                except:
+                    pass
+                
+                # Extract rating (bonus)
+                rating = "N/A"
+                try:
+                    rating_element = driver.find_element(By.XPATH, "//div[contains(@class, 'F7nice')]//span[@aria-hidden='true']")
+                    rating = rating_element.text
+                except:
+                    pass
+                
+                # Create business entry
+                business = {
+                    'Business Name': name,
+                    'Email ID': 'N/A',  # Not available on Google Maps
+                    'Phone Number': phone,
+                    'Location / Address': address,
+                    'Business Category': category,
+                    'Website URL': website,
+                    'Social Media Profiles': 'N/A'  # Not available on Google Maps
+                }
+                
+                businesses.append(business)
+                progress_placeholder.text(f"✅ Extracted {idx + 1}/{len(business_elements)}: {name}")
+                
+            except Exception as e:
+                progress_placeholder.text(f"⚠️ Skipped business {idx + 1}: {str(e)}")
+                time.sleep(1)
+                continue
+        
+        progress_placeholder.empty()
+        return pd.DataFrame(businesses)
+        
+    except Exception as e:
+        st.error(f"❌ Scraping error: {str(e)}")
+        return pd.DataFrame()
     
-    return pd.DataFrame(businesses)
+    finally:
+        if driver:
+            driver.quit()
 
 # ============================================
 # HEADER
 # ============================================
 st.title("Lead Generation Automation System")
-st.write("Real Data Extraction from Google Maps")
+st.write("Real-time Data Extraction from Google Maps")
+
+st.info("🔥 This system extracts 100% REAL business data from Google Maps using web scraping technology.")
 
 st.divider()
 
@@ -180,22 +246,26 @@ col1, col2 = st.columns(2)
 with col1:
     keyword = st.text_input(
         "Search Keyword",
-        placeholder="e.g., Training Institute, Restaurant, Hotel"
+        placeholder="e.g., Training Institute, Restaurant, Hotel",
+        help="Enter the type of business you want to find"
     )
 
 with col2:
     location = st.text_input(
         "Location",
-        placeholder="e.g., Kochi, Mumbai, Bangalore"
+        placeholder="e.g., Kochi, Mumbai, Bangalore",
+        help="Enter the city or area"
     )
 
 num_results = st.slider(
     "Number of Results",
-    min_value=5,
-    max_value=50,
-    value=10,
-    help="Select number of leads to generate"
+    min_value=3,
+    max_value=20,
+    value=5,
+    help="⚠️ Each result takes ~5 seconds. Recommended: 5-10 results"
 )
+
+st.warning(f"⏱️ Estimated time: ~{num_results * 5} seconds")
 
 st.divider()
 
@@ -207,53 +277,30 @@ st.subheader("Start Extraction")
 col1, col2, col3 = st.columns([1, 1, 1])
 
 with col2:
-    if st.button("Start Extraction", type="primary", use_container_width=True):
+    if st.button("🚀 Start Extraction", type="primary", use_container_width=True):
         if not keyword or not location:
-            st.error("Please enter both keyword and location")
+            st.error("⚠️ Please enter both keyword and location")
         else:
-            with st.spinner("Extracting business data from Google Maps..."):
+            with st.spinner("🔄 Extracting real business data from Google Maps..."):
                 
-                progress_bar = st.progress(0)
-                status = st.empty()
+                # Clear cache for fresh data
+                st.cache_data.clear()
                 
-                status.text("Connecting to Google Maps API...")
-                progress_bar.progress(20)
-                time.sleep(0.5)
-                
-                status.text("Searching for businesses...")
-                progress_bar.progress(40)
-                time.sleep(0.5)
-                
-                status.text("Extracting contact information...")
-                progress_bar.progress(60)
-                time.sleep(0.5)
-                
-                status.text("Gathering social media profiles...")
-                progress_bar.progress(80)
-                time.sleep(0.5)
-                
-                # Generate data
-                df = generate_realistic_leads(keyword, location, num_results)
-                
-                status.text("Finalizing results...")
-                progress_bar.progress(100)
-                time.sleep(0.3)
-                
-                progress_bar.empty()
-                status.empty()
+                # Scrape real data
+                df = scrape_google_maps_real(keyword, location, num_results)
                 
                 if df is not None and not df.empty:
                     st.session_state.extracted_data = df
-                    st.success(f"Successfully extracted {len(df)} businesses from Google Maps!")
+                    st.success(f"✅ Successfully extracted {len(df)} REAL businesses from Google Maps!")
                 else:
-                    st.error("No results found. Try different keywords or check your internet connection.")
+                    st.error("❌ No results found. Please try different keywords or location.")
 
 st.divider()
 
 # ============================================
 # DISPLAY RESULTS
 # ============================================
-st.subheader("Extracted Leads")
+st.subheader("📊 Extracted Leads")
 
 if st.session_state.extracted_data is not None:
     df = st.session_state.extracted_data
@@ -279,7 +326,10 @@ if st.session_state.extracted_data is not None:
     st.dataframe(df, use_container_width=True, height=400)
     
     # Total records message
-    st.info(f"Total records found: {len(df)} businesses for '{keyword}' in '{location}'")
+    st.info(f"📋 Total records found: **{len(df)} REAL businesses** for '{keyword}' in '{location}'")
+    
+    # Data authenticity note
+    st.success("✅ All data extracted is 100% REAL from Google Maps")
     
 else:
     # Empty table
@@ -289,40 +339,40 @@ else:
         'Website URL', 'Social Media Profiles'
     ])
     st.dataframe(empty_df, use_container_width=True, height=200)
-    st.info("No data yet. Enter search parameters and click 'Start Extraction'")
+    st.info("👆 No data yet. Enter search parameters and click 'Start Extraction'")
 
 st.divider()
 
 # ============================================
 # EXPORT SECTION
 # ============================================
-st.subheader("Export Data")
+st.subheader("💾 Export Data")
 
 if st.session_state.extracted_data is not None:
     # Generate CSV
     csv = st.session_state.extracted_data.to_csv(index=False)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     clean_keyword = keyword.replace(' ', '_').lower() if keyword else 'leads'
-    filename = f"leads_{clean_keyword}_{location.lower().replace(' ', '_')}_{timestamp}.csv"
+    filename = f"real_leads_{clean_keyword}_{location.lower().replace(' ', '_')}_{timestamp}.csv"
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.download_button(
-            label="Download as CSV",
+            label="⬇️ Download Real Data as CSV",
             data=csv,
             file_name=filename,
             mime='text/csv',
             use_container_width=True
         )
     
-    st.success(f"File ready: {filename}")
+    st.success(f"✅ File ready: {filename}")
     
 else:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.button("Download as CSV", disabled=True, use_container_width=True)
-    st.caption("Extract leads first to enable download")
+        st.button("⬇️ Download as CSV", disabled=True, use_container_width=True)
+    st.caption("⚠️ Extract leads first to enable download")
 
 # Footer
 st.divider()
-st.caption("Lead Generation System - Phase 2: Core Functional Development")
+st.caption("🔥 Lead Generation System - Powered by Real-time Google Maps Scraping")
